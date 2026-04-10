@@ -13,6 +13,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json(
+        { error: "ANTHROPIC_API_KEY가 설정되지 않았습니다. Vercel 환경변수를 확인해주세요." },
+        { status: 500 }
+      );
+    }
+
     if (mode === "sample") {
       const text = await extractTextFromPdf(pdfBase64);
       return NextResponse.json({ text });
@@ -29,9 +36,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (err) {
-    console.error("PDF parse error:", err);
+    const message = err instanceof Error ? err.message : "알 수 없는 오류";
+    console.error("PDF parse error:", message);
     return NextResponse.json(
-      { error: "PDF 처리 중 오류가 발생했습니다" },
+      { error: `PDF 처리 중 오류: ${message}` },
       { status: 500 }
     );
   }
