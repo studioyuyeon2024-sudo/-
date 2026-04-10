@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
 
-    const { ceremonyOrder, specialNotes, templateId, customTemplate, groomName, brideName, weddingDate, venue } = body;
+    const { ceremonyOrder, specialNotes, templateId, customTemplate, sampleScripts, groomName, brideName, weddingDate, venue } = body;
 
     if (!ceremonyOrder?.length || !groomName || !brideName || !weddingDate) {
       return NextResponse.json(
@@ -35,7 +35,8 @@ export async function POST(request: NextRequest) {
             groomName,
             brideName,
             weddingDate,
-            venue
+            venue,
+            sampleScripts
           )) {
             controller.enqueue(encoder.encode(chunk));
           }

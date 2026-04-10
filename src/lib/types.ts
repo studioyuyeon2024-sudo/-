@@ -4,11 +4,18 @@ export interface CeremonyStep {
   notes: string;
 }
 
+export interface SampleScript {
+  id: string;
+  name: string;
+  content: string;
+}
+
 export interface GenerateRequest {
   ceremonyOrder: CeremonyStep[];
   specialNotes: string;
   templateId: string;
   customTemplate?: string;
+  sampleScripts?: string[];
   groomName: string;
   brideName: string;
   weddingDate: string;

@@ -46,7 +46,8 @@ export function buildUserMessage(
   groomName: string,
   brideName: string,
   weddingDate: string,
-  venue: string
+  venue: string,
+  sampleScripts?: string[]
 ): string {
   const stepsText = ceremonyOrder
     .map((step, i) => {
@@ -54,6 +55,21 @@ export function buildUserMessage(
       return `${i + 1}. ${step.name}${notes}`;
     })
     .join("\n");
+
+  let sampleSection = "";
+  if (sampleScripts && sampleScripts.length > 0) {
+    const samples = sampleScripts
+      .map(
+        (script, i) =>
+          `--- 샘플 ${i + 1} ---\n${script}`
+      )
+      .join("\n\n");
+    sampleSection = `\n### 참고 대본 샘플 (스타일 학습용)
+아래는 이전에 사용된 실제 사회 대본입니다. 이 대본들의 톤, 스타일, 표현 방식, 구성을 참고하여 새 대본을 작성해 주세요.
+단, 식순 순서와 내용은 위에 지정된 것을 따르되, 아래 샘플의 말투와 분위기를 반영해 주세요.
+
+${samples}`;
+  }
 
   return `다음 정보를 바탕으로 결혼식 사회 대본을 작성해 주세요.
 
@@ -71,6 +87,7 @@ ${specialNotes || "없음"}
 
 ### 참고 템플릿
 ${templateContent}
+${sampleSection}
 
 위 식순 순서를 정확히 따라 대본을 작성해 주세요.
 각 식순 사이의 전환이 자연스럽도록 해주세요.
@@ -84,7 +101,8 @@ export async function* streamGenerateScript(
   groomName: string,
   brideName: string,
   weddingDate: string,
-  venue: string
+  venue: string,
+  sampleScripts?: string[]
 ): AsyncGenerator<string> {
   const userMessage = buildUserMessage(
     ceremonyOrder,
@@ -93,7 +111,8 @@ export async function* streamGenerateScript(
     groomName,
     brideName,
     weddingDate,
-    venue
+    venue,
+    sampleScripts
   );
 
   const stream = anthropic.messages.stream({

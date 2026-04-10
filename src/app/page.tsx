@@ -7,7 +7,9 @@ import SpecialNotesInput from "@/components/SpecialNotesInput";
 import TemplateSelector from "@/components/TemplateSelector";
 import ScriptDisplay from "@/components/ScriptDisplay";
 import PdfDownloadButton from "@/components/PdfDownloadButton";
-import { CeremonyStep, TemplateMetadata } from "@/lib/types";
+import PdfUploadInput from "@/components/PdfUploadInput";
+import SampleScriptUpload from "@/components/SampleScriptUpload";
+import { CeremonyStep, SampleScript, TemplateMetadata } from "@/lib/types";
 
 export default function Home() {
   const [templates, setTemplates] = useState<TemplateMetadata[]>([]);
@@ -18,6 +20,7 @@ export default function Home() {
   const [brideName, setBrideName] = useState("");
   const [weddingDate, setWeddingDate] = useState("");
   const [venue, setVenue] = useState("");
+  const [sampleScripts, setSampleScripts] = useState<SampleScript[]>([]);
   const [script, setScript] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -45,6 +48,7 @@ export default function Home() {
           ceremonyOrder,
           specialNotes,
           templateId,
+          sampleScripts: sampleScripts.map((s) => s.content),
           groomName,
           brideName,
           weddingDate,
@@ -161,6 +165,18 @@ export default function Home() {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <PdfUploadInput
+                onStepsExtracted={(steps) => setCeremonyOrder(steps)}
+                onInfoExtracted={(info) => {
+                  if (info.groomName) setGroomName(info.groomName);
+                  if (info.brideName) setBrideName(info.brideName);
+                  if (info.weddingDate) setWeddingDate(info.weddingDate);
+                  if (info.venue) setVenue(info.venue);
+                }}
+              />
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <TemplateSelector
                 templates={templates}
                 selectedId={templateId}
@@ -172,6 +188,13 @@ export default function Home() {
               <CeremonyOrderInput
                 steps={ceremonyOrder}
                 onChange={setCeremonyOrder}
+              />
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <SampleScriptUpload
+                samples={sampleScripts}
+                onChange={setSampleScripts}
               />
             </div>
 
