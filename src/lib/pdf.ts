@@ -50,7 +50,7 @@ export async function extractCeremonyStepsFromPdf(
   "info": {
     "groomName": "신랑 이름 (없으면 빈 문자열)",
     "brideName": "신부 이름 (없으면 빈 문자열)",
-    "weddingDate": "날짜 (없으면 빈 문자열)",
+    "weddingDate": "날짜를 yyyy-MM-dd 형식으로 (예: 2026-04-11). 없으면 빈 문자열",
     "venue": "장소 (없으면 빈 문자열)"
   },
   "steps": [

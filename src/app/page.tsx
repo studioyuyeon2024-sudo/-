@@ -204,7 +204,16 @@ export default function Home() {
                 onInfoExtracted={(info) => {
                   if (info.groomName) setGroomName(info.groomName);
                   if (info.brideName) setBrideName(info.brideName);
-                  if (info.weddingDate) setWeddingDate(info.weddingDate);
+                  if (info.weddingDate) {
+                    // "2026.04.11. 11:30" 등 다양한 형식을 yyyy-MM-dd로 변환
+                    const dateMatch = info.weddingDate.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+                    if (dateMatch) {
+                      const [, y, m, d] = dateMatch;
+                      setWeddingDate(`${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`);
+                    } else {
+                      setWeddingDate(info.weddingDate);
+                    }
+                  }
                   if (info.venue) setVenue(info.venue);
                 }}
               />
