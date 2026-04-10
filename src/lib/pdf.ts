@@ -1,14 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { PDFParse } from "pdf-parse";
 import { CeremonyStep } from "./types";
 
 const anthropic = new Anthropic();
-
-export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  const pdf = new PDFParse({ data: buffer });
-  const result = await pdf.getText();
-  return result.text;
-}
 
 export interface PdfParseResult {
   info: {
@@ -20,8 +13,8 @@ export interface PdfParseResult {
   steps: CeremonyStep[];
 }
 
-export async function extractCeremonyStepsFromText(
-  text: string
+export async function extractCeremonyStepsFromPdf(
+  pdfBase64: string
 ): Promise<PdfParseResult> {
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
@@ -29,8 +22,19 @@ export async function extractCeremonyStepsFromText(
     messages: [
       {
         role: "user",
-        content: `다음은 결혼식 예식 식순이 포함된 PDF에서 추출한 텍스트입니다.
-이 텍스트에서 결혼식 식순 항목들과 관련 정보를 추출해 주세요.
+        content: [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: pdfBase64,
+            },
+          },
+          {
+            type: "text",
+            text: `이 PDF는 결혼식 예식 식순표입니다.
+식순 항목들과 관련 정보를 추출해 주세요.
 
 ## 추출 규칙
 1. 번호가 매겨진 식순 항목(예: "1. 개식사", "2. 화촉점화")을 순서대로 추출
@@ -52,10 +56,9 @@ export async function extractCeremonyStepsFromText(
   "steps": [
     { "name": "식순항목명", "notes": "음악, 담당자, 진행방식 등 상세정보 (없으면 빈 문자열)" }
   ]
-}
-
-PDF 텍스트:
-${text}`,
+}`,
+          },
+        ],
       },
     ],
   });
@@ -92,10 +95,32 @@ ${text}`,
   }
 }
 
-export async function extractTextFromPdfForSample(
-  buffer: Buffer
-): Promise<string> {
-  const pdf = new PDFParse({ data: buffer });
-  const result = await pdf.getText();
-  return result.text;
+export async function extractTextFromPdf(pdfBase64: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 4096,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: pdfBase64,
+            },
+          },
+          {
+            type: "text",
+            text: "이 PDF의 전체 텍스트 내용을 그대로 추출해 주세요. 서식이나 구조를 최대한 유지하면서 텍스트만 출력해 주세요.",
+          },
+        ],
+      },
+    ],
+  });
+
+  const content = response.content[0];
+  if (content.type !== "text") return "";
+  return content.text;
 }

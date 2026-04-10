@@ -16,6 +16,19 @@ export default function SampleScriptUpload({
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(",")[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFiles = async (files: FileList) => {
     setError("");
     setIsProcessing(true);
@@ -27,13 +40,12 @@ export default function SampleScriptUpload({
         let content = "";
 
         if (file.type === "application/pdf") {
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("mode", "sample");
+          const pdfBase64 = await fileToBase64(file);
 
           const response = await fetch("/api/parse-pdf", {
             method: "POST",
-            body: formData,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pdfBase64, mode: "sample" }),
           });
 
           if (!response.ok) {

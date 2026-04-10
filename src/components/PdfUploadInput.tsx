@@ -23,9 +23,27 @@ export default function PdfUploadInput({
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(",")[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFile = async (file: File) => {
     if (file.type !== "application/pdf") {
       setError("PDF 파일만 업로드할 수 있습니다.");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError("파일 크기가 10MB를 초과합니다.");
       return;
     }
 
@@ -34,13 +52,12 @@ export default function PdfUploadInput({
     setIsParsing(true);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("mode", "ceremony");
+      const pdfBase64 = await fileToBase64(file);
 
       const response = await fetch("/api/parse-pdf", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfBase64, mode: "ceremony" }),
       });
 
       const data = await response.json();
