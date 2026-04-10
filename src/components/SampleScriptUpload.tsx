@@ -75,6 +75,9 @@ export default function SampleScriptUpload({
               name: saved.name,
               content: saved.content,
             });
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            setError(errData.error || `${file.name} 저장 실패`);
           }
         }
       } catch {
