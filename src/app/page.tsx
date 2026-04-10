@@ -29,6 +29,22 @@ export default function Home() {
       .then((res) => res.json())
       .then((data) => setTemplates(data))
       .catch(() => {});
+
+    // DB에서 저장된 샘플 스크립트 로드
+    fetch("/api/samples")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setSampleScripts(
+            data.map((d: { id: string; name: string; content: string }) => ({
+              id: d.id,
+              name: d.name,
+              content: d.content,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleGenerate = async () => {
@@ -78,6 +94,24 @@ export default function Home() {
         const chunk = decoder.decode(value, { stream: true });
         accumulated += chunk;
         setScript(accumulated);
+      }
+
+      // 생성된 대본을 DB에 저장
+      if (accumulated) {
+        fetch("/api/scripts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            groomName,
+            brideName,
+            weddingDate,
+            venue,
+            ceremonyOrder,
+            specialNotes,
+            templateId,
+            script: accumulated,
+          }),
+        }).catch(() => {});
       }
     } catch {
       alert("네트워크 오류가 발생했습니다. 다시 시도해 주세요.");

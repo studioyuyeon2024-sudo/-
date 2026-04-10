@@ -61,11 +61,21 @@ export default function SampleScriptUpload({
         }
 
         if (content.trim()) {
-          newSamples.push({
-            id: crypto.randomUUID(),
-            name: file.name,
-            content: content.trim(),
+          // DB에 저장
+          const res = await fetch("/api/samples", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: file.name, content: content.trim() }),
           });
+
+          if (res.ok) {
+            const saved = await res.json();
+            newSamples.push({
+              id: saved.id,
+              name: saved.name,
+              content: saved.content,
+            });
+          }
         }
       } catch {
         setError(`${file.name} 처리 중 오류가 발생했습니다.`);
@@ -78,7 +88,9 @@ export default function SampleScriptUpload({
     setIsProcessing(false);
   };
 
-  const removeSample = (id: string) => {
+  const removeSample = async (id: string) => {
+    // DB에서 삭제
+    await fetch(`/api/samples?id=${id}`, { method: "DELETE" });
     onChange(samples.filter((s) => s.id !== id));
   };
 
@@ -89,6 +101,7 @@ export default function SampleScriptUpload({
       </h2>
       <p className="text-sm text-gray-500 mb-3">
         기존에 사용한 사회 대본을 업로드하면 AI가 그 스타일을 참고하여 생성합니다.
+        업로드한 샘플은 저장되어 다음에도 사용됩니다.
       </p>
 
       <div className="space-y-3">
