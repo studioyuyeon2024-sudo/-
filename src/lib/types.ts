@@ -15,7 +15,7 @@ export interface GenerateRequest {
   specialNotes: string;
   templateId: string;
   customTemplate?: string;
-  sampleScripts?: string[];
+  styleProfile?: string;
   groomName: string;
   brideName: string;
   weddingDate: string;
@@ -28,4 +28,11 @@ export interface TemplateMetadata {
   description: string;
   defaultSteps: string[];
   content: string;
+}
+
+export interface StyleProfile {
+  id: string;
+  profile: string;
+  sample_count: number;
+  created_at: string;
 }

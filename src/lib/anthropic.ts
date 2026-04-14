@@ -86,7 +86,7 @@ export function buildUserMessage(
   brideName: string,
   weddingDate: string,
   venue: string,
-  sampleScripts?: string[]
+  styleProfile?: string
 ): string {
   const stepsText = ceremonyOrder
     .map((step, i) => {
@@ -95,16 +95,13 @@ export function buildUserMessage(
     })
     .join("\n");
 
-  let sampleSection = "";
-  if (sampleScripts && sampleScripts.length > 0) {
-    const samples = sampleScripts
-      .map((script, i) => `--- 샘플 ${i + 1} ---\n${script}`)
-      .join("\n\n");
-    sampleSection = `\n## 참고 대본 샘플 (스타일 및 분량 학습용)
-아래 실제 대본의 톤, 말투, 분량, 큐 표기 스타일을 반드시 참고하세요.
-특히 각 식순별 문장 수와 감성 밀도를 비슷하게 맞춰주세요.
+  let styleSection = "";
+  if (styleProfile) {
+    styleSection = `\n## 스타일 프로필 (실제 대본에서 추출한 스타일 가이드)
+아래는 기존 실제 대본들에서 분석한 스타일 특성입니다.
+이 스타일의 톤, 말투, 큐 표기, 감성 밀도를 반드시 따라주세요.
 
-${samples}`;
+${styleProfile}`;
   }
 
   return `## 기본 정보
@@ -121,7 +118,7 @@ ${specialNotes || "없음"}
 
 ## 참고 템플릿
 ${templateContent}
-${sampleSection}
+${styleSection}
 
 ## 중요 지시사항
 1. 위 식순 순서를 정확히 따라 대본을 작성하세요
@@ -129,7 +126,8 @@ ${sampleSection}
 3. 입장 식순에는 반드시 (BGM) 큐와 실시간 동선 묘사를 포함하세요
 4. 특이사항에 언급된 곡명, 담당자, 진행방식을 반드시 반영하세요
 5. 사회자가 마이크를 잡고 실제로 말하는 모든 문장을 빠짐없이 적으세요
-6. (부드럽게), (밝은 톤으로) 같은 톤 지시어를 적절히 삽입하세요`;
+6. (부드럽게), (밝은 톤으로) 같은 톤 지시어를 적절히 삽입하세요
+7. 스타일 프로필이 제공된 경우, 해당 스타일의 톤과 표현 방식을 충실히 반영하세요`;
 }
 
 export async function* streamGenerateScript(
@@ -140,7 +138,7 @@ export async function* streamGenerateScript(
   brideName: string,
   weddingDate: string,
   venue: string,
-  sampleScripts?: string[]
+  styleProfile?: string
 ): AsyncGenerator<string> {
   const userMessage = buildUserMessage(
     ceremonyOrder,
@@ -150,7 +148,7 @@ export async function* streamGenerateScript(
     brideName,
     weddingDate,
     venue,
-    sampleScripts
+    styleProfile
   );
 
   const stream = anthropic.messages.stream({
