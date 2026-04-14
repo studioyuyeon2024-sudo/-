@@ -1,16 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 interface Props {
   script: string;
   isGenerating: boolean;
+  onScriptChange?: (newScript: string) => void;
 }
 
 interface ScriptSection {
   title: string;
   duration: string;
   content: string;
+  rawLines: string[];
 }
 
 function parseScriptSections(script: string): {
@@ -24,7 +26,6 @@ function parseScriptSections(script: string): {
   let headerDone = false;
 
   for (const line of lines) {
-    // ## 로 시작하는 식순 섹션 감지
     if (line.match(/^##\s+/)) {
       headerDone = true;
       if (currentSection) {
@@ -35,22 +36,26 @@ function parseScriptSections(script: string): {
         title: line.replace(/^##\s+/, "").trim(),
         duration: "",
         content: "",
+        rawLines: [line],
       };
       continue;
     }
 
-    // *예상 소요시간* 감지
     if (currentSection && line.match(/^\*.*소요시간.*\*/)) {
       currentSection.duration = line.replace(/\*/g, "").trim();
+      currentSection.rawLines.push(line);
       continue;
     }
 
     if (!headerDone) {
       header += line + "\n";
     } else if (currentSection) {
-      // --- 구분선 제외
-      if (line.match(/^---+$/)) continue;
+      if (line.match(/^---+$/)) {
+        currentSection.rawLines.push(line);
+        continue;
+      }
       currentSection.content += line + "\n";
+      currentSection.rawLines.push(line);
     }
   }
 
@@ -62,9 +67,20 @@ function parseScriptSections(script: string): {
   return { header: header.trim(), sections };
 }
 
+function rebuildScript(header: string, sections: ScriptSection[]): string {
+  let result = header ? header + "\n\n" : "";
+  for (const section of sections) {
+    result += `## ${section.title}\n`;
+    if (section.duration) {
+      result += `*${section.duration}*\n`;
+    }
+    result += `\n${section.content}\n\n---\n\n`;
+  }
+  return result.trim();
+}
+
 function formatContent(text: string) {
   return text.split("\n").map((line, i) => {
-    // 사회자 멘트
     if (line.startsWith("사회자:")) {
       return (
         <p key={i} className="my-1.5">
@@ -74,7 +90,6 @@ function formatContent(text: string) {
       );
     }
 
-    // [지시사항] 형태
     const directiveMatch = line.match(/^\[(.+)\]$/);
     if (directiveMatch) {
       return (
@@ -84,7 +99,6 @@ function formatContent(text: string) {
       );
     }
 
-    // **굵은 텍스트** 처리
     if (line.match(/\*\*.+\*\*/)) {
       const parts = line.split(/(\*\*.+?\*\*)/g);
       return (
@@ -103,10 +117,8 @@ function formatContent(text: string) {
       );
     }
 
-    // 빈 줄
     if (!line.trim()) return <div key={i} className="h-2" />;
 
-    // 일반 텍스트
     return (
       <p key={i} className="my-1 text-gray-700 leading-relaxed">
         {line}
@@ -115,7 +127,191 @@ function formatContent(text: string) {
   });
 }
 
-export default function ScriptDisplay({ script, isGenerating }: Props) {
+function SectionCard({
+  section,
+  index,
+  isGenerating,
+  onUpdate,
+  fullScript,
+}: {
+  section: ScriptSection;
+  index: number;
+  isGenerating: boolean;
+  onUpdate: (newContent: string) => void;
+  fullScript: string;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(section.content);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [showAiInput, setShowAiInput] = useState(false);
+  const [isRevising, setIsRevising] = useState(false);
+
+  const handleSaveEdit = () => {
+    onUpdate(editText);
+    setIsEditing(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditText(section.content);
+    setIsEditing(false);
+  };
+
+  const handleAiRevise = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsRevising(true);
+
+    try {
+      const res = await fetch("/api/revise-section", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sectionTitle: section.title,
+          sectionContent: section.content,
+          instruction: aiPrompt,
+          fullScript,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        onUpdate(data.content);
+        setAiPrompt("");
+        setShowAiInput(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "수정 요청 중 오류가 발생했습니다.");
+      }
+    } catch {
+      alert("네트워크 오류가 발생했습니다.");
+    } finally {
+      setIsRevising(false);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+      {/* 카드 헤더 */}
+      <div className="bg-gradient-to-r from-rose-50 to-rose-100/50 px-4 py-3 border-b border-rose-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">
+            {index + 1}
+          </span>
+          <h3 className="font-bold text-rose-900 text-sm">{section.title}</h3>
+        </div>
+        <div className="flex items-center gap-1">
+          {section.duration && (
+            <span className="text-xs text-rose-500 bg-white px-2 py-0.5 rounded-full border border-rose-200 mr-1">
+              {section.duration}
+            </span>
+          )}
+          {!isGenerating && !isEditing && (
+            <>
+              <button
+                onClick={() => {
+                  setEditText(section.content);
+                  setIsEditing(true);
+                  setShowAiInput(false);
+                }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded-md transition-colors"
+                title="직접 수정"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => {
+                  setShowAiInput(!showAiInput);
+                  setIsEditing(false);
+                }}
+                className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-white rounded-md transition-colors"
+                title="AI 수정 요청"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* AI 수정 요청 입력 */}
+      {showAiInput && (
+        <div className="px-4 py-3 bg-violet-50 border-b border-violet-100">
+          <p className="text-xs text-violet-600 font-medium mb-2">AI에게 수정 요청</p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) handleAiRevise();
+              }}
+              placeholder="예: 좀 더 따뜻한 톤으로, 축가 가수 이름 추가..."
+              className="flex-1 px-3 py-2 text-sm border border-violet-200 rounded-lg focus:ring-2 focus:ring-violet-300 focus:border-violet-400 outline-none"
+              disabled={isRevising}
+            />
+            <button
+              onClick={handleAiRevise}
+              disabled={isRevising || !aiPrompt.trim()}
+              className="px-3 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors shrink-0"
+            >
+              {isRevising ? (
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  수정 중
+                </span>
+              ) : (
+                "수정"
+              )}
+            </button>
+            <button
+              onClick={() => { setShowAiInput(false); setAiPrompt(""); }}
+              className="px-2 py-2 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 카드 내용 */}
+      <div className="px-4 py-3 text-sm">
+        {isEditing ? (
+          <div>
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              className="w-full min-h-[150px] px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none font-mono"
+              rows={Math.max(5, editText.split("\n").length + 1)}
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={handleCancelEdit}
+                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="px-3 py-1.5 text-sm text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        ) : (
+          formatContent(section.content)
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function ScriptDisplay({ script, isGenerating, onScriptChange }: Props) {
   const parsed = useMemo(() => {
     if (!script) return null;
     return parseScriptSections(script);
@@ -124,6 +320,14 @@ export default function ScriptDisplay({ script, isGenerating }: Props) {
   const copyToClipboard = async () => {
     await navigator.clipboard.writeText(script);
     alert("대본이 클립보드에 복사되었습니다.");
+  };
+
+  const handleSectionUpdate = (index: number, newContent: string) => {
+    if (!parsed || !onScriptChange) return;
+    const updatedSections = [...parsed.sections];
+    updatedSections[index] = { ...updatedSections[index], content: newContent };
+    const newScript = rebuildScript(parsed.header, updatedSections);
+    onScriptChange(newScript);
   };
 
   if (!script && !isGenerating) {
@@ -169,7 +373,7 @@ export default function ScriptDisplay({ script, isGenerating }: Props) {
       {/* Script content - 카드 형태 */}
       {parsed && parsed.sections.length > 0 ? (
         <div className="space-y-4">
-          {/* 헤더 (일시, 장소, 신랑/신부) */}
+          {/* 헤더 */}
           {parsed.header && (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
               {parsed.header.split("\n").map((line, i) => {
@@ -206,36 +410,18 @@ export default function ScriptDisplay({ script, isGenerating }: Props) {
 
           {/* 식순별 카드 */}
           {parsed.sections.map((section, i) => (
-            <div
-              key={i}
-              className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"
-            >
-              {/* 카드 헤더 */}
-              <div className="bg-gradient-to-r from-rose-50 to-rose-100/50 px-4 py-3 border-b border-rose-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">
-                    {i + 1}
-                  </span>
-                  <h3 className="font-bold text-rose-900 text-sm">
-                    {section.title}
-                  </h3>
-                </div>
-                {section.duration && (
-                  <span className="text-xs text-rose-500 bg-white px-2 py-0.5 rounded-full border border-rose-200">
-                    {section.duration}
-                  </span>
-                )}
-              </div>
-              {/* 카드 내용 */}
-              <div className="px-4 py-3 text-sm">
-                {formatContent(section.content)}
-              </div>
-            </div>
+            <SectionCard
+              key={`${section.title}-${i}`}
+              section={section}
+              index={i}
+              isGenerating={isGenerating}
+              onUpdate={(newContent) => handleSectionUpdate(i, newContent)}
+              fullScript={script}
+            />
           ))}
         </div>
       ) : (
-        /* 파싱 전이거나 생성 중일 때 기본 표시 */
-        <div className="prose prose-sm max-w-none prose-headings:text-rose-900 prose-h1:text-xl prose-h2:text-lg prose-strong:text-rose-800 prose-p:text-gray-700 prose-p:leading-relaxed whitespace-pre-wrap text-sm text-gray-700">
+        <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm text-gray-700">
           {script}
         </div>
       )}
