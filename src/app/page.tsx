@@ -132,6 +132,7 @@ export default function Home() {
           specialNotes,
           templateId,
           styleProfile: styleProfile?.profile || undefined,
+          goldenExamples: styleProfile?.golden_examples || undefined,
           groomName,
           brideName,
           weddingDate,

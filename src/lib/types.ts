@@ -16,6 +16,7 @@ export interface GenerateRequest {
   templateId: string;
   customTemplate?: string;
   styleProfile?: string;
+  goldenExamples?: Record<string, string>;
   groomName: string;
   brideName: string;
   weddingDate: string;
@@ -35,5 +36,6 @@ export interface StyleProfile {
   profile: string;
   sample_count: number;
   sample_hash: string;
+  golden_examples: Record<string, string>;
   created_at: string;
 }
