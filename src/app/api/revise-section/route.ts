@@ -22,12 +22,14 @@ export async function POST(request: NextRequest) {
 
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
-      system: `당신은 20년 경력의 전문 결혼식 사회자(MC)입니다.
-사용자가 요청한 식순 섹션만 수정해 주세요.
-기존 대본의 톤과 스타일을 유지하면서 수정해 주세요.
-마크다운 형식(사회자: 멘트, [지시사항])을 유지해 주세요.
-수정된 섹션 내용만 출력하세요. 섹션 제목(##)이나 소요시간은 포함하지 마세요.`,
+      max_tokens: 1024,
+      system: [
+        {
+          type: "text",
+          text: "결혼식 MC 대본 수정 전문가. 요청된 섹션만 수정. 기존 톤 유지. 마크다운 형식(사회자:, [지시사항]) 유지. 섹션 내용만 출력(제목/소요시간 제외).",
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       messages: [
         {
           role: "user",

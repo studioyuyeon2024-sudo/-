@@ -19,6 +19,13 @@ export async function extractCeremonyStepsFromPdf(
   const response = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 1024,
+    system: [
+      {
+        type: "text",
+        text: "결혼식 식순표 PDF에서 식순 항목과 기본 정보를 JSON으로 추출하는 전문가입니다. JSON만 출력하세요.",
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [
       {
         role: "user",
