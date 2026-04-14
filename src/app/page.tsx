@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/Header";
 import CeremonyOrderInput from "@/components/CeremonyOrderInput";
 import SpecialNotesInput from "@/components/SpecialNotesInput";
@@ -9,10 +9,11 @@ import ScriptDisplay from "@/components/ScriptDisplay";
 import PdfDownloadButton from "@/components/PdfDownloadButton";
 import PdfUploadInput from "@/components/PdfUploadInput";
 import SampleScriptUpload from "@/components/SampleScriptUpload";
-import { CeremonyStep, SampleScript, StyleProfile, TemplateMetadata } from "@/lib/types";
-import { simpleHash } from "@/lib/utils";
+import StepScriptSelector from "@/components/StepScriptSelector";
+import ScriptArchive from "@/components/ScriptArchive";
+import { CeremonyStep, SampleScript, ArchivedScript, TemplateMetadata } from "@/lib/types";
 
-type ViewMode = "input" | "script";
+type ViewMode = "input" | "compose" | "preview" | "archive";
 
 export default function Home() {
   const [templates, setTemplates] = useState<TemplateMetadata[]>([]);
@@ -24,26 +25,12 @@ export default function Home() {
   const [weddingDate, setWeddingDate] = useState("");
   const [venue, setVenue] = useState("");
   const [sampleScripts, setSampleScripts] = useState<SampleScript[]>([]);
-  const [styleProfile, setStyleProfile] = useState<StyleProfile | null>(null);
-  const [isExtractingProfile, setIsExtractingProfile] = useState(false);
+  const [stepContents, setStepContents] = useState<Record<string, string>>({});
   const [script, setScript] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("input");
   const [formError, setFormError] = useState("");
   const [loadError, setLoadError] = useState("");
-
-  // 샘플 내용의 해시 — 샘플이 변경되면 해시가 바뀜
-  const currentSampleHash = useMemo(
-    () => sampleScripts.length > 0
-      ? simpleHash(sampleScripts.map((s) => s.content).join("|||"))
-      : "",
-    [sampleScripts]
-  );
-
-  // 프로필이 stale한지 판단 (해시 불일치)
-  const isProfileStale = styleProfile
-    ? styleProfile.sample_hash !== currentSampleHash
-    : false;
 
   useEffect(() => {
     Promise.all([
@@ -55,12 +42,8 @@ export default function Home() {
         if (!res.ok) throw new Error("샘플");
         return res.json();
       }),
-      fetch("/api/style-profile").then((res) => {
-        if (!res.ok) return null;
-        return res.json();
-      }),
     ])
-      .then(([templatesData, samplesData, profileData]) => {
+      .then(([templatesData, samplesData]) => {
         setTemplates(templatesData);
         if (Array.isArray(samplesData)) {
           setSampleScripts(
@@ -71,42 +54,74 @@ export default function Home() {
             }))
           );
         }
-        if (profileData) {
-          setStyleProfile(profileData);
-        }
       })
       .catch((err) => {
         setLoadError(`초기 데이터 로드 실패: ${err.message}. 페이지를 새로고침 해주세요.`);
       });
   }, []);
 
-  const extractStyleProfile = async () => {
-    if (sampleScripts.length === 0) return;
-    setIsExtractingProfile(true);
+  const variables = { groomName, brideName, weddingDate, venue };
+
+  const handleStepContentChange = useCallback((stepName: string, content: string) => {
+    setStepContents((prev) => ({ ...prev, [stepName]: content }));
+  }, []);
+
+  // 식순 조합 → 대본 미리보기
+  const handleCompose = () => {
+    const missing: string[] = [];
+    if (!groomName) missing.push("신랑 이름");
+    if (!brideName) missing.push("신부 이름");
+    if (ceremonyOrder.length === 0) missing.push("식순");
+
+    if (missing.length > 0) {
+      setFormError(`다음 항목을 입력해 주세요: ${missing.join(", ")}`);
+      return;
+    }
     setFormError("");
+    setViewMode("compose");
+  };
+
+  // 조합된 대본을 하나로 합치기
+  const buildFullScript = () => {
+    let result = `# 결혼식 사회 대본\n**일시**: ${weddingDate} | **장소**: ${venue || "미정"}\n**신랑**: ${groomName} | **신부**: ${brideName}\n\n---\n\n`;
+
+    for (const step of ceremonyOrder) {
+      const content = stepContents[step.name] || "(대본 미선택)";
+      result += `## ${step.name}\n\n${content}\n\n---\n\n`;
+    }
+
+    return result.trim();
+  };
+
+  // 대본 완성 및 저장
+  const handleFinalize = async () => {
+    const fullScript = buildFullScript();
+    setScript(fullScript);
+    setViewMode("preview");
+
+    // DB에 저장
     try {
-      const res = await fetch("/api/style-profile", {
+      await fetch("/api/scripts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sampleContents: sampleScripts.map((s) => s.content),
+          groomName,
+          brideName,
+          weddingDate,
+          venue,
+          ceremonyOrder,
+          specialNotes,
+          templateId,
+          script: fullScript,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setStyleProfile(data);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setFormError(err.error || "스타일 프로필 추출 실패");
-      }
     } catch {
-      setFormError("스타일 프로필 추출 중 네트워크 오류");
-    } finally {
-      setIsExtractingProfile(false);
+      // 저장 실패해도 대본은 보여줌
     }
   };
 
-  const handleGenerate = async () => {
+  // AI 생성 (기존 방식, 선택적)
+  const handleAiGenerate = async () => {
     const missing: string[] = [];
     if (!groomName) missing.push("신랑 이름");
     if (!brideName) missing.push("신부 이름");
@@ -121,7 +136,7 @@ export default function Home() {
     setFormError("");
     setIsGenerating(true);
     setScript("");
-    setViewMode("script");
+    setViewMode("preview");
 
     try {
       const response = await fetch("/api/generate", {
@@ -131,8 +146,6 @@ export default function Home() {
           ceremonyOrder,
           specialNotes,
           templateId,
-          styleProfile: styleProfile?.profile || undefined,
-          goldenExamples: styleProfile?.golden_examples || undefined,
           groomName,
           brideName,
           weddingDate,
@@ -202,6 +215,18 @@ export default function Home() {
     }
   };
 
+  const handleLoadArchive = (archived: ArchivedScript) => {
+    setGroomName(archived.groom_name);
+    setBrideName(archived.bride_name);
+    setWeddingDate(archived.wedding_date || "");
+    setVenue(archived.venue || "");
+    if (archived.ceremony_order) {
+      setCeremonyOrder(archived.ceremony_order);
+    }
+    setScript(archived.script);
+    setViewMode("preview");
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -214,93 +239,52 @@ export default function Home() {
           </div>
         )}
 
-        {/* 탭 네비게이션 - 대본이 있을 때만 표시 */}
-        {script && (
-          <div className="flex gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 max-w-md">
+        {/* 탭 네비게이션 */}
+        <div className="flex gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 max-w-lg">
+          {[
+            { key: "input" as ViewMode, label: "대본 작성" },
+            ...(ceremonyOrder.length > 0 ? [{ key: "compose" as ViewMode, label: "식순 조합" }] : []),
+            ...(script ? [{ key: "preview" as ViewMode, label: "대본 보기" }] : []),
+            { key: "archive" as ViewMode, label: "아카이브" },
+          ].map((tab) => (
             <button
-              onClick={() => setViewMode("input")}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                viewMode === "input"
+              key={tab.key}
+              onClick={() => setViewMode(tab.key)}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                viewMode === tab.key
                   ? "bg-rose-600 text-white shadow-sm"
                   : "text-gray-600 hover:bg-gray-100"
               }`}
             >
-              입력 정보
+              {tab.label}
             </button>
-            <button
-              onClick={() => setViewMode("script")}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                viewMode === "script"
-                  ? "bg-rose-600 text-white shadow-sm"
-                  : "text-gray-600 hover:bg-gray-100"
-              }`}
-            >
-              대본 보기
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
 
-        {/* 입력 폼 뷰 */}
+        {/* === 대본 작성 탭 === */}
         {viewMode === "input" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
                 <h2 className="text-lg font-bold text-gray-800">기본 정보</h2>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="groomName" className="block text-sm font-semibold text-gray-700 mb-1">
-                      신랑 이름 *
-                    </label>
-                    <input
-                      id="groomName"
-                      type="text"
-                      value={groomName}
-                      onChange={(e) => setGroomName(e.target.value)}
-                      placeholder="홍길동"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none"
-                    />
+                    <label htmlFor="groomName" className="block text-sm font-semibold text-gray-700 mb-1">신랑 이름 *</label>
+                    <input id="groomName" type="text" value={groomName} onChange={(e) => setGroomName(e.target.value)} placeholder="홍길동" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none" />
                   </div>
                   <div>
-                    <label htmlFor="brideName" className="block text-sm font-semibold text-gray-700 mb-1">
-                      신부 이름 *
-                    </label>
-                    <input
-                      id="brideName"
-                      type="text"
-                      value={brideName}
-                      onChange={(e) => setBrideName(e.target.value)}
-                      placeholder="김영희"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none"
-                    />
+                    <label htmlFor="brideName" className="block text-sm font-semibold text-gray-700 mb-1">신부 이름 *</label>
+                    <input id="brideName" type="text" value={brideName} onChange={(e) => setBrideName(e.target.value)} placeholder="김영희" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none" />
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="weddingDate" className="block text-sm font-semibold text-gray-700 mb-1">
-                      결혼식 날짜 *
-                    </label>
-                    <input
-                      id="weddingDate"
-                      type="date"
-                      value={weddingDate}
-                      onChange={(e) => setWeddingDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none"
-                    />
+                    <label htmlFor="weddingDate" className="block text-sm font-semibold text-gray-700 mb-1">결혼식 날짜</label>
+                    <input id="weddingDate" type="date" value={weddingDate} onChange={(e) => setWeddingDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none" />
                   </div>
                   <div>
-                    <label htmlFor="venue" className="block text-sm font-semibold text-gray-700 mb-1">
-                      장소
-                    </label>
-                    <input
-                      id="venue"
-                      type="text"
-                      value={venue}
-                      onChange={(e) => setVenue(e.target.value)}
-                      placeholder="JW 메리어트 호텔"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none"
-                    />
+                    <label htmlFor="venue" className="block text-sm font-semibold text-gray-700 mb-1">장소</label>
+                    <input id="venue" type="text" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="JW 메리어트 호텔" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-400 outline-none" />
                   </div>
                 </div>
               </div>
@@ -326,82 +310,23 @@ export default function Home() {
               </div>
 
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <TemplateSelector
-                  templates={templates}
-                  selectedId={templateId}
-                  onChange={loadDefaultSteps}
-                />
+                <TemplateSelector templates={templates} selectedId={templateId} onChange={loadDefaultSteps} />
               </div>
             </div>
 
             <div className="space-y-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <CeremonyOrderInput
-                  steps={ceremonyOrder}
-                  onChange={setCeremonyOrder}
-                />
+                <CeremonyOrderInput steps={ceremonyOrder} onChange={setCeremonyOrder} />
               </div>
 
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <SampleScriptUpload
-                  samples={sampleScripts}
-                  onChange={setSampleScripts}
-                />
-
-                {/* 스타일 프로필 상태 */}
-                {sampleScripts.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    {styleProfile && !isProfileStale ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-green-600 flex items-center gap-1.5">
-                          <span className="w-2 h-2 bg-green-500 rounded-full" />
-                          스타일 프로필 적용 중 ({styleProfile.sample_count}개 샘플 기반)
-                        </span>
-                        <button
-                          type="button"
-                          onClick={extractStyleProfile}
-                          disabled={isExtractingProfile}
-                          className="text-xs text-gray-500 hover:text-violet-600 transition-colors"
-                        >
-                          재분석
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={extractStyleProfile}
-                        disabled={isExtractingProfile}
-                        className="w-full px-3 py-2 bg-violet-50 border border-violet-200 rounded-lg text-sm text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        {isExtractingProfile ? (
-                          <>
-                            <span className="w-3.5 h-3.5 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" />
-                            스타일 분석 중...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            {isProfileStale
-                              ? "샘플 변경됨 - 스타일 재분석"
-                              : `${sampleScripts.length}개 샘플에서 스타일 추출`}
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                )}
+                <SampleScriptUpload samples={sampleScripts} onChange={setSampleScripts} />
               </div>
 
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <SpecialNotesInput
-                  value={specialNotes}
-                  onChange={setSpecialNotes}
-                />
+                <SpecialNotesInput value={specialNotes} onChange={setSpecialNotes} />
               </div>
 
-              {/* 폼 에러 메시지 */}
               {formError && (
                 <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700" aria-live="polite">
                   {formError}
@@ -410,66 +335,115 @@ export default function Home() {
 
               <div className="flex gap-3">
                 <button
-                  onClick={handleGenerate}
-                  disabled={isGenerating || isExtractingProfile}
-                  className="flex-1 px-6 py-3 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  onClick={handleCompose}
+                  className="flex-1 px-6 py-3 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-colors shadow-sm"
                 >
-                  {isGenerating ? "생성 중..." : isExtractingProfile ? "스타일 분석 중..." : "대본 생성"}
+                  식순별 대본 조합
                 </button>
-                {script && !isGenerating && (
-                  <button
-                    onClick={() => setViewMode("script")}
-                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors"
-                  >
-                    대본 보기
-                  </button>
-                )}
+                <button
+                  onClick={handleAiGenerate}
+                  disabled={isGenerating}
+                  className="px-6 py-3 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50 shadow-sm"
+                >
+                  {isGenerating ? "생성 중..." : "AI 생성"}
+                </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* 대본 전체화면 뷰 */}
-        {viewMode === "script" && (
+        {/* === 식순 조합 탭 === */}
+        {viewMode === "compose" && (
           <div className="max-w-4xl mx-auto">
-            {/* 상단 액션 바 */}
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={() => setViewMode("input")}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                입력으로 돌아가기
+              </button>
+              <button
+                onClick={handleFinalize}
+                className="px-6 py-2 bg-rose-600 text-white rounded-lg text-sm font-bold hover:bg-rose-700 shadow-sm"
+              >
+                대본 완성 및 저장
+              </button>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 mb-6">
+              <p className="text-sm text-rose-700">
+                <strong>{groomName}</strong> ♥ <strong>{brideName}</strong>
+                {weddingDate && <span className="ml-2">| {weddingDate}</span>}
+                {venue && <span className="ml-2">| {venue}</span>}
+              </p>
+              <p className="text-xs text-rose-500 mt-1">
+                각 식순마다 좌우 화살표로 대본을 선택하세요. &quot;직접 편집&quot;으로 수정도 가능합니다.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {ceremonyOrder.map((step, i) => (
+                <StepScriptSelector
+                  key={step.id}
+                  stepName={step.name}
+                  stepIndex={i}
+                  variables={variables}
+                  onContentChange={(content) => handleStepContentChange(step.name, content)}
+                />
+              ))}
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={handleFinalize}
+                className="px-8 py-3 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 shadow-sm"
+              >
+                대본 완성 및 저장
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* === 대본 보기 탭 === */}
+        {viewMode === "preview" && (
+          <div className="max-w-4xl mx-auto">
             {!isGenerating && script && (
               <div className="flex items-center justify-between mb-4">
                 <div className="flex gap-2">
                   <button
                     onClick={() => setViewMode("input")}
-                    className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+                    className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
-                    입력으로 돌아가기
+                    입력으로
                   </button>
                   <button
-                    onClick={handleGenerate}
-                    className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={() => setViewMode("compose")}
+                    className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
                   >
-                    다시 생성
+                    조합으로
                   </button>
                 </div>
-                <PdfDownloadButton
-                  script={script}
-                  groomName={groomName}
-                  brideName={brideName}
-                  weddingDate={weddingDate}
-                  disabled={isGenerating}
-                />
+                <PdfDownloadButton script={script} groomName={groomName} brideName={brideName} weddingDate={weddingDate} disabled={isGenerating} />
               </div>
             )}
 
-            {/* 대본 내용 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-              <ScriptDisplay
-                script={script}
-                isGenerating={isGenerating}
-                onScriptChange={setScript}
-              />
+              <ScriptDisplay script={script} isGenerating={isGenerating} onScriptChange={setScript} />
             </div>
+          </div>
+        )}
+
+        {/* === 아카이브 탭 === */}
+        {viewMode === "archive" && (
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">저장된 대본</h2>
+            <ScriptArchive onLoadScript={handleLoadArchive} />
           </div>
         )}
       </main>

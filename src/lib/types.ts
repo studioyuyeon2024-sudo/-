@@ -39,3 +39,20 @@ export interface StyleProfile {
   golden_examples: Record<string, string>;
   created_at: string;
 }
+
+export interface StepOption {
+  source: string;
+  sourceName: string;
+  content: string;
+}
+
+export interface ArchivedScript {
+  id: string;
+  groom_name: string;
+  bride_name: string;
+  wedding_date: string;
+  venue: string;
+  ceremony_order: CeremonyStep[];
+  script: string;
+  created_at: string;
+}
