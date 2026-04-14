@@ -11,9 +11,10 @@ import PdfUploadInput from "@/components/PdfUploadInput";
 import SampleScriptUpload from "@/components/SampleScriptUpload";
 import StepScriptSelector from "@/components/StepScriptSelector";
 import ScriptArchive from "@/components/ScriptArchive";
+import StepTemplateManager from "@/components/StepTemplateManager";
 import { CeremonyStep, SampleScript, ArchivedScript, TemplateMetadata } from "@/lib/types";
 
-type ViewMode = "input" | "compose" | "preview" | "archive";
+type ViewMode = "input" | "compose" | "preview" | "templates" | "archive";
 
 export default function Home() {
   const [templates, setTemplates] = useState<TemplateMetadata[]>([]);
@@ -243,6 +244,7 @@ export default function Home() {
         <div className="flex gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 max-w-lg">
           {[
             { key: "input" as ViewMode, label: "대본 작성" },
+            { key: "templates" as ViewMode, label: "식순 대본" },
             ...(ceremonyOrder.length > 0 ? [{ key: "compose" as ViewMode, label: "식순 조합" }] : []),
             ...(script ? [{ key: "preview" as ViewMode, label: "대본 보기" }] : []),
             { key: "archive" as ViewMode, label: "아카이브" },
@@ -439,10 +441,17 @@ export default function Home() {
           </div>
         )}
 
+        {/* === 식순 대본 관리 탭 === */}
+        {viewMode === "templates" && (
+          <div className="max-w-4xl mx-auto">
+            <StepTemplateManager />
+          </div>
+        )}
+
         {/* === 아카이브 탭 === */}
         {viewMode === "archive" && (
           <div className="max-w-4xl mx-auto">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">저장된 대본</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-6">저장된 대본</h2>
             <ScriptArchive onLoadScript={handleLoadArchive} />
           </div>
         )}

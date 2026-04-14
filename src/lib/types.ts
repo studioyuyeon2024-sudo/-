@@ -40,6 +40,14 @@ export interface StyleProfile {
   created_at: string;
 }
 
+export interface StepTemplate {
+  id: string;
+  step_name: string;
+  label: string;
+  content: string;
+  created_at: string;
+}
+
 export interface StepOption {
   source: string;
   sourceName: string;
