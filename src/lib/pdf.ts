@@ -103,13 +103,38 @@ export async function extractCeremonyStepsFromPdf(
 }
 
 export async function extractTextFromPdf(pdfBase64: string): Promise<string> {
-  const { PDFParse } = await import("pdf-parse");
-  const data = Buffer.from(pdfBase64, "base64");
-  const parser = new PDFParse({ data });
-  try {
-    const result = await parser.getText();
-    return result.text;
-  } finally {
-    await parser.destroy();
-  }
+  const response = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 4096,
+    system: [
+      {
+        type: "text",
+        text: "PDF에서 텍스트를 추출합니다. 서식과 구조를 유지하며 텍스트만 출력하세요.",
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: pdfBase64,
+            },
+          },
+          {
+            type: "text",
+            text: "이 PDF의 전체 텍스트 내용을 그대로 추출해 주세요.",
+          },
+        ],
+      },
+    ],
+  });
+
+  const content = response.content[0];
+  if (content.type !== "text") return "";
+  return content.text;
 }
