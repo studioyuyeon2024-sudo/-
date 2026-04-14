@@ -48,8 +48,14 @@ export default function Home() {
   }, []);
 
   const handleGenerate = async () => {
-    if (!groomName || !brideName || !weddingDate || ceremonyOrder.length === 0) {
-      alert("신랑, 신부 이름, 날짜, 식순을 모두 입력해 주세요.");
+    const missing: string[] = [];
+    if (!groomName) missing.push("신랑 이름");
+    if (!brideName) missing.push("신부 이름");
+    if (!weddingDate) missing.push("날짜");
+    if (ceremonyOrder.length === 0) missing.push("식순");
+
+    if (missing.length > 0) {
+      alert(`다음 항목을 입력해 주세요: ${missing.join(", ")}`);
       return;
     }
 
