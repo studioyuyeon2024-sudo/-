@@ -26,19 +26,25 @@ export default function Home() {
   const [script, setScript] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("input");
+  const [formError, setFormError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    fetch("/api/templates")
-      .then((res) => res.json())
-      .then((data) => setTemplates(data))
-      .catch(() => {});
-
-    fetch("/api/samples")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
+    Promise.all([
+      fetch("/api/templates").then((res) => {
+        if (!res.ok) throw new Error("템플릿");
+        return res.json();
+      }),
+      fetch("/api/samples").then((res) => {
+        if (!res.ok) throw new Error("샘플");
+        return res.json();
+      }),
+    ])
+      .then(([templatesData, samplesData]) => {
+        setTemplates(templatesData);
+        if (Array.isArray(samplesData)) {
           setSampleScripts(
-            data.map((d: { id: string; name: string; content: string }) => ({
+            samplesData.map((d: { id: string; name: string; content: string }) => ({
               id: d.id,
               name: d.name,
               content: d.content,
@@ -46,7 +52,9 @@ export default function Home() {
           );
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        setLoadError(`초기 데이터 로드 실패: ${err.message}. 페이지를 새로고침 해주세요.`);
+      });
   }, []);
 
   const handleGenerate = async () => {
@@ -57,10 +65,11 @@ export default function Home() {
     if (ceremonyOrder.length === 0) missing.push("식순");
 
     if (missing.length > 0) {
-      alert(`다음 항목을 입력해 주세요: ${missing.join(", ")}`);
+      setFormError(`다음 항목을 입력해 주세요: ${missing.join(", ")}`);
       return;
     }
 
+    setFormError("");
     setIsGenerating(true);
     setScript("");
     setViewMode("script");
@@ -83,7 +92,7 @@ export default function Home() {
 
       if (!response.ok) {
         const err = await response.json();
-        alert(err.error || "대본 생성 중 오류가 발생했습니다.");
+        setFormError(err.error || "대본 생성 중 오류가 발생했습니다.");
         setIsGenerating(false);
         setViewMode("input");
         return;
@@ -123,7 +132,8 @@ export default function Home() {
         }).catch(() => {});
       }
     } catch {
-      alert("네트워크 오류가 발생했습니다. 다시 시도해 주세요.");
+      setFormError("네트워크 오류가 발생했습니다. 다시 시도해 주세요.");
+      setViewMode("input");
     } finally {
       setIsGenerating(false);
     }
@@ -147,6 +157,13 @@ export default function Home() {
       <Header />
 
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {/* 로드 에러 */}
+        {loadError && (
+          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700" aria-live="polite">
+            {loadError}
+          </div>
+        )}
+
         {/* 탭 네비게이션 - 대본이 있을 때만 표시 */}
         {script && (
           <div className="flex gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 max-w-md">
@@ -182,10 +199,11 @@ export default function Home() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    <label htmlFor="groomName" className="block text-sm font-semibold text-gray-700 mb-1">
                       신랑 이름 *
                     </label>
                     <input
+                      id="groomName"
                       type="text"
                       value={groomName}
                       onChange={(e) => setGroomName(e.target.value)}
@@ -194,10 +212,11 @@ export default function Home() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    <label htmlFor="brideName" className="block text-sm font-semibold text-gray-700 mb-1">
                       신부 이름 *
                     </label>
                     <input
+                      id="brideName"
                       type="text"
                       value={brideName}
                       onChange={(e) => setBrideName(e.target.value)}
@@ -209,10 +228,11 @@ export default function Home() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    <label htmlFor="weddingDate" className="block text-sm font-semibold text-gray-700 mb-1">
                       결혼식 날짜 *
                     </label>
                     <input
+                      id="weddingDate"
                       type="date"
                       value={weddingDate}
                       onChange={(e) => setWeddingDate(e.target.value)}
@@ -220,10 +240,11 @@ export default function Home() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    <label htmlFor="venue" className="block text-sm font-semibold text-gray-700 mb-1">
                       장소
                     </label>
                     <input
+                      id="venue"
                       type="text"
                       value={venue}
                       onChange={(e) => setVenue(e.target.value)}
@@ -284,6 +305,13 @@ export default function Home() {
                   onChange={setSpecialNotes}
                 />
               </div>
+
+              {/* 폼 에러 메시지 */}
+              {formError && (
+                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700" aria-live="polite">
+                  {formError}
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button

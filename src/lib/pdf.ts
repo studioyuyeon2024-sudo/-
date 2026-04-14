@@ -104,9 +104,12 @@ export async function extractCeremonyStepsFromPdf(
 
 export async function extractTextFromPdf(pdfBase64: string): Promise<string> {
   const { PDFParse } = await import("pdf-parse");
-  const data = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
+  const data = Buffer.from(pdfBase64, "base64");
   const parser = new PDFParse({ data });
-  const result = await parser.getText();
-  await parser.destroy();
-  return result.text;
+  try {
+    const result = await parser.getText();
+    return result.text;
+  } finally {
+    await parser.destroy();
+  }
 }

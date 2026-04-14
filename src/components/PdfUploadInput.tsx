@@ -2,6 +2,7 @@
 
 import { useState, useRef, DragEvent } from "react";
 import { CeremonyStep } from "@/lib/types";
+import { fileToBase64 } from "@/lib/utils";
 
 interface PdfUploadInputProps {
   onStepsExtracted: (steps: CeremonyStep[]) => void;
@@ -22,19 +23,6 @@ export default function PdfUploadInput({
   const [fileName, setFileName] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(",")[1];
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
 
   const handleFile = async (file: File) => {
     if (file.type !== "application/pdf") {
@@ -107,10 +95,15 @@ export default function PdfUploadInput({
       </p>
 
       <div
+        role="button"
+        tabIndex={0}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
+        onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={handleDragLeave}
         onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
+        aria-label="PDF 파일 업로드 영역. 클릭하거나 파일을 드래그하세요."
         className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
           isDragOver
             ? "border-rose-400 bg-rose-50"
@@ -164,7 +157,7 @@ export default function PdfUploadInput({
       </div>
 
       {error && (
-        <p className="mt-2 text-sm text-red-600">{error}</p>
+        <p className="mt-2 text-sm text-red-600" aria-live="polite">{error}</p>
       )}
     </div>
   );

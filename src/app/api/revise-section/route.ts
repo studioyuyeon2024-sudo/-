@@ -4,22 +4,30 @@ import Anthropic from "@anthropic-ai/sdk";
 const anthropic = new Anthropic();
 
 export async function POST(request: NextRequest) {
+  let body;
   try {
-    const body = await request.json();
-    const { sectionTitle, sectionContent, instruction, fullScript } = body as {
-      sectionTitle: string;
-      sectionContent: string;
-      instruction: string;
-      fullScript: string;
-    };
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "잘못된 요청 형식입니다" },
+      { status: 400 }
+    );
+  }
 
-    if (!sectionTitle || !instruction) {
-      return NextResponse.json(
-        { error: "식순 제목과 수정 요청 내용이 필요합니다" },
-        { status: 400 }
-      );
-    }
+  const { sectionTitle, sectionContent, instruction } = body as {
+    sectionTitle: string;
+    sectionContent: string;
+    instruction: string;
+  };
 
+  if (!sectionTitle || !sectionContent || !instruction) {
+    return NextResponse.json(
+      { error: "식순 제목, 내용, 수정 요청이 모두 필요합니다" },
+      { status: 400 }
+    );
+  }
+
+  try {
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface Props {
   script: string;
@@ -132,19 +132,25 @@ function SectionCard({
   index,
   isGenerating,
   onUpdate,
-  fullScript,
 }: {
   section: ScriptSection;
   index: number;
   isGenerating: boolean;
   onUpdate: (newContent: string) => void;
-  fullScript: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(section.content);
   const [aiPrompt, setAiPrompt] = useState("");
   const [showAiInput, setShowAiInput] = useState(false);
   const [isRevising, setIsRevising] = useState(false);
+  const [reviseError, setReviseError] = useState("");
+
+  // 외부에서 section.content가 변경되면 editText 동기화
+  useEffect(() => {
+    setEditText(section.content);
+  }, [section.content]);
+
+  const formattedContent = useMemo(() => formatContent(section.content), [section.content]);
 
   const handleSaveEdit = () => {
     onUpdate(editText);
@@ -159,6 +165,7 @@ function SectionCard({
   const handleAiRevise = async () => {
     if (!aiPrompt.trim()) return;
     setIsRevising(true);
+    setReviseError("");
 
     try {
       const res = await fetch("/api/revise-section", {
@@ -168,7 +175,6 @@ function SectionCard({
           sectionTitle: section.title,
           sectionContent: section.content,
           instruction: aiPrompt,
-          fullScript,
         }),
       });
 
@@ -179,10 +185,10 @@ function SectionCard({
         setShowAiInput(false);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "수정 요청 중 오류가 발생했습니다.");
+        setReviseError(err.error || "수정 요청 중 오류가 발생했습니다.");
       }
     } catch {
-      alert("네트워크 오류가 발생했습니다.");
+      setReviseError("네트워크 오류가 발생했습니다.");
     } finally {
       setIsRevising(false);
     }
@@ -213,7 +219,7 @@ function SectionCard({
                   setShowAiInput(false);
                 }}
                 className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded-md transition-colors"
-                title="직접 수정"
+                aria-label={`${section.title} 직접 수정`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -223,9 +229,10 @@ function SectionCard({
                 onClick={() => {
                   setShowAiInput(!showAiInput);
                   setIsEditing(false);
+                  setReviseError("");
                 }}
                 className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-white rounded-md transition-colors"
-                title="AI 수정 요청"
+                aria-label={`${section.title} AI 수정 요청`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -267,14 +274,18 @@ function SectionCard({
               )}
             </button>
             <button
-              onClick={() => { setShowAiInput(false); setAiPrompt(""); }}
+              onClick={() => { setShowAiInput(false); setAiPrompt(""); setReviseError(""); }}
               className="px-2 py-2 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="AI 수정 닫기"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
+          {reviseError && (
+            <p className="mt-2 text-sm text-red-600" aria-live="polite">{reviseError}</p>
+          )}
         </div>
       )}
 
@@ -304,7 +315,7 @@ function SectionCard({
             </div>
           </div>
         ) : (
-          formatContent(section.content)
+          formattedContent
         )}
       </div>
     </div>
@@ -312,6 +323,8 @@ function SectionCard({
 }
 
 export default function ScriptDisplay({ script, isGenerating, onScriptChange }: Props) {
+  const [copyMsg, setCopyMsg] = useState("");
+
   const parsed = useMemo(() => {
     if (!script) return null;
     return parseScriptSections(script);
@@ -319,7 +332,8 @@ export default function ScriptDisplay({ script, isGenerating, onScriptChange }: 
 
   const copyToClipboard = async () => {
     await navigator.clipboard.writeText(script);
-    alert("대본이 클립보드에 복사되었습니다.");
+    setCopyMsg("복사되었습니다!");
+    setTimeout(() => setCopyMsg(""), 2000);
   };
 
   const handleSectionUpdate = (index: number, newContent: string) => {
@@ -361,12 +375,17 @@ export default function ScriptDisplay({ script, isGenerating, onScriptChange }: 
           </span>
         )}
         {script && !isGenerating && (
-          <button
-            onClick={copyToClipboard}
-            className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            복사
-          </button>
+          <div className="flex items-center gap-2">
+            {copyMsg && (
+              <span className="text-sm text-green-600" aria-live="polite">{copyMsg}</span>
+            )}
+            <button
+              onClick={copyToClipboard}
+              className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              복사
+            </button>
+          </div>
         )}
       </div>
 
@@ -416,7 +435,6 @@ export default function ScriptDisplay({ script, isGenerating, onScriptChange }: 
               index={i}
               isGenerating={isGenerating}
               onUpdate={(newContent) => handleSectionUpdate(i, newContent)}
-              fullScript={script}
             />
           ))}
         </div>
