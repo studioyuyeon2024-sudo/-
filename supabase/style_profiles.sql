@@ -6,9 +6,13 @@ CREATE TABLE IF NOT EXISTS style_profiles (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   profile TEXT NOT NULL,
   sample_count INTEGER NOT NULL DEFAULT 0,
+  sample_hash TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- RLS 비활성화 (1인 사용)
 ALTER TABLE style_profiles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all" ON style_profiles FOR ALL USING (true) WITH CHECK (true);
+
+-- 이미 테이블이 존재하는 경우 sample_hash 컬럼 추가
+-- ALTER TABLE style_profiles ADD COLUMN IF NOT EXISTS sample_hash TEXT NOT NULL DEFAULT '';

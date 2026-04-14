@@ -34,5 +34,6 @@ export interface StyleProfile {
   id: string;
   profile: string;
   sample_count: number;
+  sample_hash: string;
   created_at: string;
 }

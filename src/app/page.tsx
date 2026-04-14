@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Header from "@/components/Header";
 import CeremonyOrderInput from "@/components/CeremonyOrderInput";
 import SpecialNotesInput from "@/components/SpecialNotesInput";
@@ -10,6 +10,7 @@ import PdfDownloadButton from "@/components/PdfDownloadButton";
 import PdfUploadInput from "@/components/PdfUploadInput";
 import SampleScriptUpload from "@/components/SampleScriptUpload";
 import { CeremonyStep, SampleScript, StyleProfile, TemplateMetadata } from "@/lib/types";
+import { simpleHash } from "@/lib/utils";
 
 type ViewMode = "input" | "script";
 
@@ -30,6 +31,19 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<ViewMode>("input");
   const [formError, setFormError] = useState("");
   const [loadError, setLoadError] = useState("");
+
+  // 샘플 내용의 해시 — 샘플이 변경되면 해시가 바뀜
+  const currentSampleHash = useMemo(
+    () => sampleScripts.length > 0
+      ? simpleHash(sampleScripts.map((s) => s.content).join("|||"))
+      : "",
+    [sampleScripts]
+  );
+
+  // 프로필이 stale한지 판단 (해시 불일치)
+  const isProfileStale = styleProfile
+    ? styleProfile.sample_hash !== currentSampleHash
+    : false;
 
   useEffect(() => {
     Promise.all([
@@ -330,19 +344,13 @@ export default function Home() {
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <SampleScriptUpload
                   samples={sampleScripts}
-                  onChange={(newSamples) => {
-                    setSampleScripts(newSamples);
-                    // 샘플이 변경되면 프로필이 stale함을 표시
-                    if (styleProfile && newSamples.length !== styleProfile.sample_count) {
-                      setStyleProfile({ ...styleProfile, sample_count: -1 });
-                    }
-                  }}
+                  onChange={setSampleScripts}
                 />
 
                 {/* 스타일 프로필 상태 */}
                 {sampleScripts.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-100">
-                    {styleProfile && styleProfile.sample_count !== -1 ? (
+                    {styleProfile && !isProfileStale ? (
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-green-600 flex items-center gap-1.5">
                           <span className="w-2 h-2 bg-green-500 rounded-full" />
@@ -374,7 +382,7 @@ export default function Home() {
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
-                            {styleProfile?.sample_count === -1
+                            {isProfileStale
                               ? "샘플 변경됨 - 스타일 재분석"
                               : `${sampleScripts.length}개 샘플에서 스타일 추출`}
                           </>
@@ -402,10 +410,10 @@ export default function Home() {
               <div className="flex gap-3">
                 <button
                   onClick={handleGenerate}
-                  disabled={isGenerating}
+                  disabled={isGenerating || isExtractingProfile}
                   className="flex-1 px-6 py-3 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                 >
-                  {isGenerating ? "생성 중..." : "대본 생성"}
+                  {isGenerating ? "생성 중..." : isExtractingProfile ? "스타일 분석 중..." : "대본 생성"}
                 </button>
                 {script && !isGenerating && (
                   <button

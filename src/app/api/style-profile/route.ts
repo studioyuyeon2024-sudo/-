@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { supabase } from "@/lib/supabase";
+import { simpleHash } from "@/lib/utils";
 
 const anthropic = new Anthropic();
+
+const MAX_SAMPLES = 50;
+const MAX_CONTENT_LENGTH = 50000; // 약 5만자
 
 const EXTRACT_PROMPT = `당신은 결혼식 사회 대본 스타일 분석 전문가입니다.
 아래에 여러 개의 실제 사회 대본 샘플이 주어집니다.
@@ -67,7 +71,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "샘플 대본이 필요합니다" }, { status: 400 });
   }
 
-  const samplesText = sampleContents
+  if (sampleContents.length > MAX_SAMPLES) {
+    return NextResponse.json({ error: `샘플은 최대 ${MAX_SAMPLES}개까지 가능합니다` }, { status: 400 });
+  }
+
+  // 개별 샘플 크기 제한
+  const validContents = sampleContents.filter(
+    (c) => typeof c === "string" && c.length > 0 && c.length <= MAX_CONTENT_LENGTH
+  );
+
+  if (validContents.length === 0) {
+    return NextResponse.json({ error: "유효한 샘플이 없습니다" }, { status: 400 });
+  }
+
+  // 샘플 ID 해시 생성 (stale 감지용)
+  const sampleHash = simpleHash(validContents.join("|||"));
+
+  const samplesText = validContents
     .map((content, i) => `=== 샘플 ${i + 1} ===\n${content}`)
     .join("\n\n");
 
@@ -85,7 +105,7 @@ export async function POST(request: NextRequest) {
       messages: [
         {
           role: "user",
-          content: `아래 ${sampleContents.length}개의 실제 결혼식 사회 대본을 분석하여 스타일 프로필을 작성해 주세요.\n\n${samplesText}`,
+          content: `아래 ${validContents.length}개의 실제 결혼식 사회 대본을 분석하여 스타일 프로필을 작성해 주세요.\n\n${samplesText}`,
         },
       ],
     });
@@ -97,14 +117,13 @@ export async function POST(request: NextRequest) {
 
     const profile = content.text.trim();
 
-    // 기존 프로필 삭제 후 새로 저장
-    await supabase.from("style_profiles").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-
+    // 새 프로필 삽입
     const { data, error } = await supabase
       .from("style_profiles")
       .insert({
         profile,
-        sample_count: sampleContents.length,
+        sample_count: validContents.length,
+        sample_hash: sampleHash,
       })
       .select()
       .single();
@@ -113,9 +132,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 새 행 제외하고 기존 행 정리
+    if (data) {
+      await supabase
+        .from("style_profiles")
+        .delete()
+        .neq("id", data.id);
+    }
+
     return NextResponse.json(data);
   } catch (err) {
     const message = err instanceof Error ? err.message : "알 수 없는 오류";
     return NextResponse.json({ error: `프로필 추출 중 오류: ${message}` }, { status: 500 });
   }
 }
+
