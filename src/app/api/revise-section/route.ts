@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 2048,
       system: `당신은 20년 경력의 전문 결혼식 사회자(MC)입니다.
 사용자가 요청한 식순 섹션만 수정해 주세요.
