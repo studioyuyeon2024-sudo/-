@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { StepTemplate } from "@/lib/types";
+import { StepTemplate, SampleScript } from "@/lib/types";
 
 const COMMON_STEPS = [
   "개식선언", "신랑입장", "신부입장", "신부 인도", "혼인서약",
@@ -11,6 +11,7 @@ const COMMON_STEPS = [
 
 export default function StepTemplateManager() {
   const [templates, setTemplates] = useState<StepTemplate[]>([]);
+  const [samples, setSamples] = useState<SampleScript[]>([]);
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [addStepName, setAddStepName] = useState("");
@@ -22,13 +23,28 @@ export default function StepTemplateManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [customStepName, setCustomStepName] = useState("");
 
+  // 샘플 매핑 모드
+  const [mappingMode, setMappingMode] = useState(false);
+  const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
+  const [selectedText, setSelectedText] = useState("");
+  const [mapStepName, setMapStepName] = useState("");
+  const [mapLabel, setMapLabel] = useState("");
+  const [mapCustomStep, setMapCustomStep] = useState("");
+
   const loadTemplates = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/step-templates");
-      if (res.ok) {
-        const data = await res.json();
+      const [tRes, sRes] = await Promise.all([
+        fetch("/api/step-templates"),
+        fetch("/api/samples"),
+      ]);
+      if (tRes.ok) {
+        const data = await tRes.json();
         if (Array.isArray(data)) setTemplates(data);
+      }
+      if (sRes.ok) {
+        const data = await sRes.json();
+        if (Array.isArray(data)) setSamples(data);
       }
     } catch { /* ignore */ }
     setIsLoading(false);
@@ -36,7 +52,6 @@ export default function StepTemplateManager() {
 
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
-  // 식순별 그룹핑
   const stepGroups = templates.reduce<Record<string, StepTemplate[]>>((acc, t) => {
     if (!acc[t.step_name]) acc[t.step_name] = [];
     acc[t.step_name].push(t);
@@ -60,11 +75,29 @@ export default function StepTemplateManager() {
     });
 
     if (res.ok) {
-      setAddStepName("");
-      setAddLabel("");
-      setAddContent("");
-      setCustomStepName("");
+      setAddStepName(""); setAddLabel(""); setAddContent(""); setCustomStepName("");
       setIsAdding(false);
+      loadTemplates();
+    }
+  };
+
+  const handleMapSave = async () => {
+    const stepName = mapStepName === "__custom__" ? mapCustomStep.trim() : mapStepName;
+    if (!stepName || !selectedText.trim()) return;
+
+    const sample = samples.find((s) => s.id === selectedSampleId);
+    const res = await fetch("/api/step-templates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stepName,
+        label: mapLabel.trim() || `${sample?.name || "샘플"} - ${stepName}`,
+        content: selectedText.trim(),
+      }),
+    });
+
+    if (res.ok) {
+      setSelectedText(""); setMapStepName(""); setMapLabel(""); setMapCustomStep("");
       loadTemplates();
     }
   };
@@ -84,6 +117,8 @@ export default function StepTemplateManager() {
     loadTemplates();
   };
 
+  const selectedSample = samples.find((s) => s.id === selectedSampleId);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -91,18 +126,172 @@ export default function StepTemplateManager() {
           <h2 className="text-xl font-bold text-gray-900">식순별 대본 관리</h2>
           <p className="text-sm text-gray-500 mt-1">각 식순에 여러 버전의 대본을 저장하고 조합할 때 선택할 수 있습니다</p>
         </div>
-        <button
-          onClick={() => setIsAdding(!isAdding)}
-          className="px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-semibold hover:bg-rose-700 transition-all shadow-sm hover:shadow-md flex items-center gap-1.5"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          대본 추가
-        </button>
+        <div className="flex gap-2">
+          {samples.length > 0 && (
+            <button
+              onClick={() => { setMappingMode(!mappingMode); setIsAdding(false); }}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex items-center gap-1.5 ${
+                mappingMode
+                  ? "bg-violet-600 text-white hover:bg-violet-700"
+                  : "bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100"
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              샘플에서 매핑
+            </button>
+          )}
+          <button
+            onClick={() => { setIsAdding(!isAdding); setMappingMode(false); }}
+            className="px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-semibold hover:bg-rose-700 transition-all shadow-sm hover:shadow-md flex items-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            직접 추가
+          </button>
+        </div>
       </div>
 
-      {/* 새 대본 추가 폼 */}
+      {/* === 샘플 매핑 모드 === */}
+      {mappingMode && (
+        <div className="mb-6 border border-violet-200 rounded-2xl overflow-hidden shadow-sm">
+          <div className="bg-gradient-to-r from-violet-50 to-indigo-50 px-5 py-3 border-b border-violet-200">
+            <h3 className="text-sm font-bold text-violet-900">샘플에서 식순 매핑</h3>
+            <p className="text-xs text-violet-600 mt-0.5">샘플을 선택 → 해당 부분을 드래그/선택 → 식순 지정 → 저장</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-violet-100">
+            {/* 왼쪽: 샘플 목록/내용 */}
+            <div className="p-4">
+              {!selectedSampleId ? (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-3">샘플 선택 ({samples.length}개)</p>
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                    {samples.map((sample) => (
+                      <button
+                        key={sample.id}
+                        onClick={() => setSelectedSampleId(sample.id)}
+                        className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-violet-300 hover:bg-violet-50/50 transition-all text-sm"
+                      >
+                        <span className="font-medium text-gray-800">{sample.name}</span>
+                        <span className="block text-xs text-gray-400 mt-0.5 truncate">{sample.content.slice(0, 80)}...</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <button
+                      onClick={() => { setSelectedSampleId(null); setSelectedText(""); }}
+                      className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      다른 샘플
+                    </button>
+                    <span className="text-xs font-medium text-gray-600">{selectedSample?.name}</span>
+                  </div>
+                  <p className="text-[10px] text-violet-500 mb-2 bg-violet-50 px-3 py-1.5 rounded-lg">
+                    아래 대본에서 원하는 부분을 마우스로 드래그하여 선택하세요
+                  </p>
+                  <div
+                    className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto bg-gray-50 rounded-xl p-4 border border-gray-200 select-text cursor-text"
+                    onMouseUp={() => {
+                      const selection = window.getSelection()?.toString();
+                      if (selection && selection.trim()) {
+                        setSelectedText(selection.trim());
+                      }
+                    }}
+                  >
+                    {selectedSample?.content}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 오른쪽: 선택된 텍스트 + 식순 매핑 */}
+            <div className="p-4">
+              <p className="text-xs font-semibold text-gray-500 mb-3">
+                {selectedText ? "선택된 텍스트 → 식순에 저장" : "왼쪽에서 텍스트를 선택하세요"}
+              </p>
+
+              {selectedText ? (
+                <div className="space-y-3">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 max-h-40 overflow-y-auto">
+                    <p className="text-xs text-amber-800 whitespace-pre-wrap leading-relaxed">{selectedText.slice(0, 500)}{selectedText.length > 500 ? "..." : ""}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">이 텍스트가 속하는 식순</label>
+                    <select
+                      value={mapStepName}
+                      onChange={(e) => setMapStepName(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-300 outline-none bg-white"
+                    >
+                      <option value="">식순 선택</option>
+                      {COMMON_STEPS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                      <option value="__custom__">직접 입력...</option>
+                    </select>
+                    {mapStepName === "__custom__" && (
+                      <input
+                        type="text"
+                        value={mapCustomStep}
+                        onChange={(e) => setMapCustomStep(e.target.value)}
+                        placeholder="식순명 입력"
+                        className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-300 outline-none"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">버전 이름 (선택)</label>
+                    <input
+                      type="text"
+                      value={mapLabel}
+                      onChange={(e) => setMapLabel(e.target.value)}
+                      placeholder="예: 감성 버전"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-300 outline-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedText("")}
+                      className="flex-1 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50"
+                    >
+                      선택 해제
+                    </button>
+                    <button
+                      onClick={handleMapSave}
+                      disabled={!(mapStepName === "__custom__" ? mapCustomStep.trim() : mapStepName)}
+                      className="flex-1 px-3 py-2 text-sm text-white bg-violet-600 rounded-xl hover:bg-violet-700 disabled:opacity-40 font-semibold"
+                    >
+                      식순에 저장
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-12 text-gray-300">
+                  <div className="text-center">
+                    <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                    <p className="text-xs">텍스트를 드래그하면<br />여기서 매핑할 수 있습니다</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === 직접 추가 폼 === */}
       {isAdding && (
         <div className="mb-6 bg-gradient-to-br from-rose-50 to-orange-50 border border-rose-200 rounded-2xl p-6 shadow-sm">
           <h3 className="text-sm font-bold text-rose-900 mb-4">새 대본 추가</h3>
@@ -169,13 +358,13 @@ export default function StepTemplateManager() {
         </div>
       )}
 
-      {/* 로딩 */}
+      {/* === 등록된 대본 목록 === */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-gray-400">
           <span className="w-5 h-5 border-2 border-gray-300 border-t-rose-500 rounded-full animate-spin mr-3" />
           불러오는 중...
         </div>
-      ) : stepNames.length === 0 ? (
+      ) : stepNames.length === 0 && !mappingMode && !isAdding ? (
         <div className="text-center py-16">
           <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,9 +372,13 @@ export default function StepTemplateManager() {
             </svg>
           </div>
           <p className="text-gray-500 text-sm">아직 등록된 대본이 없습니다</p>
-          <p className="text-gray-400 text-xs mt-1">&quot;대본 추가&quot; 버튼을 눌러 식순별 대본을 등록하세요</p>
+          <p className="text-gray-400 text-xs mt-1">
+            {samples.length > 0
+              ? "\"샘플에서 매핑\" 버튼으로 기존 샘플에서 식순을 매핑하세요"
+              : "\"직접 추가\" 버튼을 눌러 식순별 대본을 등록하세요"}
+          </p>
         </div>
-      ) : (
+      ) : stepNames.length > 0 && (
         <div className="space-y-3">
           {stepNames.map((stepName) => {
             const items = stepGroups[stepName];
@@ -193,7 +386,6 @@ export default function StepTemplateManager() {
 
             return (
               <div key={stepName} className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow">
-                {/* 식순 헤더 */}
                 <button
                   onClick={() => setSelectedStep(isOpen ? null : stepName)}
                   className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors"
@@ -215,7 +407,6 @@ export default function StepTemplateManager() {
                   </svg>
                 </button>
 
-                {/* 버전 목록 */}
                 {isOpen && (
                   <div className="border-t border-gray-100">
                     {items.map((item) => (
