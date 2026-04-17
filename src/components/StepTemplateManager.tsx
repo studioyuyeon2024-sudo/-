@@ -30,6 +30,9 @@ export default function StepTemplateManager() {
   const [mapStepName, setMapStepName] = useState("");
   const [mapLabel, setMapLabel] = useState("");
   const [mapCustomStep, setMapCustomStep] = useState("");
+  const [sampleGroomName, setSampleGroomName] = useState("");
+  const [sampleBrideName, setSampleBrideName] = useState("");
+  const [sampleVenue, setSampleVenue] = useState("");
 
   const loadTemplates = useCallback(async () => {
     setIsLoading(true);
@@ -85,6 +88,21 @@ export default function StepTemplateManager() {
     const stepName = mapStepName === "__custom__" ? mapCustomStep.trim() : mapStepName;
     if (!stepName || !selectedText.trim()) return;
 
+    // 이름/장소를 변수로 치환
+    let content = selectedText.trim();
+    if (sampleGroomName.trim()) {
+      const escaped = sampleGroomName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      content = content.replace(new RegExp(escaped, "g"), "{{groomName}}");
+    }
+    if (sampleBrideName.trim()) {
+      const escaped = sampleBrideName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      content = content.replace(new RegExp(escaped, "g"), "{{brideName}}");
+    }
+    if (sampleVenue.trim()) {
+      const escaped = sampleVenue.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      content = content.replace(new RegExp(escaped, "g"), "{{venue}}");
+    }
+
     const sample = samples.find((s) => s.id === selectedSampleId);
     const res = await fetch("/api/step-templates", {
       method: "POST",
@@ -92,7 +110,7 @@ export default function StepTemplateManager() {
       body: JSON.stringify({
         stepName,
         label: mapLabel.trim() || `${sample?.name || "샘플"} - ${stepName}`,
-        content: selectedText.trim(),
+        content,
       }),
     });
 
@@ -185,7 +203,7 @@ export default function StepTemplateManager() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <button
-                      onClick={() => { setSelectedSampleId(null); setSelectedText(""); }}
+                      onClick={() => { setSelectedSampleId(null); setSelectedText(""); setSampleGroomName(""); setSampleBrideName(""); setSampleVenue(""); }}
                       className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -195,6 +213,37 @@ export default function StepTemplateManager() {
                     </button>
                     <span className="text-xs font-medium text-gray-600">{selectedSample?.name}</span>
                   </div>
+
+                  {/* 이 샘플의 실제 이름 입력 (치환용) */}
+                  <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-amber-800 mb-2">
+                      이 샘플에 등장하는 실제 이름/장소 (저장 시 자동으로 변수로 치환됩니다)
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        value={sampleGroomName}
+                        onChange={(e) => setSampleGroomName(e.target.value)}
+                        placeholder="신랑 이름 (예: 김철수)"
+                        className="px-2.5 py-1.5 text-xs border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-300 outline-none bg-white"
+                      />
+                      <input
+                        type="text"
+                        value={sampleBrideName}
+                        onChange={(e) => setSampleBrideName(e.target.value)}
+                        placeholder="신부 이름 (예: 이영희)"
+                        className="px-2.5 py-1.5 text-xs border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-300 outline-none bg-white"
+                      />
+                      <input
+                        type="text"
+                        value={sampleVenue}
+                        onChange={(e) => setSampleVenue(e.target.value)}
+                        placeholder="장소 (선택)"
+                        className="px-2.5 py-1.5 text-xs border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-300 outline-none bg-white"
+                      />
+                    </div>
+                  </div>
+
                   <p className="text-[10px] text-violet-500 mb-2 bg-violet-50 px-3 py-1.5 rounded-lg">
                     아래 대본에서 원하는 부분을 마우스로 드래그하여 선택하세요
                   </p>
@@ -224,6 +273,29 @@ export default function StepTemplateManager() {
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 max-h-40 overflow-y-auto">
                     <p className="text-xs text-amber-800 whitespace-pre-wrap leading-relaxed">{selectedText.slice(0, 500)}{selectedText.length > 500 ? "..." : ""}</p>
                   </div>
+
+                  {/* 치환 미리보기 */}
+                  {(sampleGroomName.trim() || sampleBrideName.trim() || sampleVenue.trim()) && (() => {
+                    let preview = selectedText.slice(0, 500);
+                    if (sampleGroomName.trim()) {
+                      const esc = sampleGroomName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                      preview = preview.replace(new RegExp(esc, "g"), "{{groomName}}");
+                    }
+                    if (sampleBrideName.trim()) {
+                      const esc = sampleBrideName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                      preview = preview.replace(new RegExp(esc, "g"), "{{brideName}}");
+                    }
+                    if (sampleVenue.trim()) {
+                      const esc = sampleVenue.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                      preview = preview.replace(new RegExp(esc, "g"), "{{venue}}");
+                    }
+                    return (
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-3 max-h-40 overflow-y-auto">
+                        <p className="text-[10px] font-semibold text-green-700 mb-1">저장될 내용 (미리보기)</p>
+                        <p className="text-xs text-green-900 whitespace-pre-wrap leading-relaxed">{preview}{selectedText.length > 500 ? "..." : ""}</p>
+                      </div>
+                    );
+                  })()}
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">이 텍스트가 속하는 식순</label>
